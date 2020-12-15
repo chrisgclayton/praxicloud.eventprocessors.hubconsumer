@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\common.props" />
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>PraxiCloud-EventProcessors-HubConsumer-AzureStorage</PackageId>
+    <Description>PraxiCloud libraries offer a range of common functions, features and base classes to use when building solutions, increasing the time to delivery. Offers implementations for lease and checkpoint management in Azure Storage.</Description>
+    <PackageTags>praxicloud utilities hub consumer event processor host azure storage</PackageTags>
+    <PackageReleaseNotes>Initial release</PackageReleaseNotes>
+    <AssemblyVersion>1.0.11.0</AssemblyVersion>
+    <FileVersion>1.0.11.0</FileVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.7.0" />
+    <PackageReference Include="PraxiCloud-Core-Metrics" Version="2.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\praxicloud.eventprocessors.hubconsumer\praxicloud.eventprocessors.hubconsumer.csproj" />
+  </ItemGroup>
+</Project>

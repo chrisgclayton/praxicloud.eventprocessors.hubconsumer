@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Christopher Clayton</Authors>
+    <Company>Christopher Clayton</Company>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <Copyright>© Christopher Clayton. All rights reserved.</Copyright>
+    <Product>PraxiCloud Libraries</Product>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/chrisgclayton/praxicloud.core</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/chrisgclayton/praxicloud.core</RepositoryUrl>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Version>1.0.1</Version>
+    <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup> 
+  <ItemGroup>
+    <None Include="..\..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
+  </ItemGroup>
+</Project>
