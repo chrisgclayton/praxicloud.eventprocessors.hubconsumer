@@ -1,25 +1,31 @@
-﻿using Azure;
-using Azure.Core;
-using Azure.Messaging.EventHubs;
-using Azure.Messaging.EventHubs.Consumer;
-using Azure.Messaging.EventHubs.Primitives;
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Logging;
-using praxicloud.core.metrics;
-using praxicloud.core.security;
-using praxicloud.eventprocessors.hubconsumer.checkpointing;
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+﻿// Copyright (c) Christopher Clayton. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace praxicloud.eventprocessors.hubconsumer.storage
 {
+    #region Using Clauses
+    using Azure;
+    using Azure.Core;
+    using Azure.Messaging.EventHubs;
+    using Azure.Messaging.EventHubs.Consumer;
+    using Azure.Messaging.EventHubs.Primitives;
+    using Azure.Storage.Blobs;
+    using Azure.Storage.Blobs.Models;
+    using Microsoft.Extensions.Logging;
+    using praxicloud.core.metrics;
+    using praxicloud.core.security;
+    using praxicloud.eventprocessors.hubconsumer.checkpointing;
+    using System;
+    using System.Collections.Concurrent;
+    using System.Collections.Generic;
+    using System.Globalization;
+    using System.Threading;
+    using System.Threading.Tasks;
+    #endregion
+
+    /// <summary>
+    /// A base checkpoint type used to store checkpoint information in Azure Blob Storage
+    /// </summary>
     public abstract class BlobStorageCheckpointBase : ICheckpointManager
     {
         #region Constants
@@ -137,6 +143,7 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
         /// </summary>
         protected ISummary UpdateBlobTiming { get; private set; }
         #endregion
+        #region Methods
         /// <inheritdoc />
         public virtual async Task<bool> CreateStoreIfNotExistsAsync(FixedProcessorClientOptions options, CancellationToken cancellationToken)
         {
@@ -186,9 +193,17 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
         /// <returns>The sequence number found in the BLOB or null if the BLOB is corrupt or sequence not found</returns>
         protected abstract Task<long?> GetCheckpointSequenceNumberAsync(string partitionId, BlobItem blob, CancellationToken cancellationToken);
 
+        /// <summary>
+        /// Sets the checkpoint information into the BLOB
+        /// </summary>
+        /// <param name="blobClient">A client used to interact with the BLOB</param>
+        /// <param name="partitionId">The id of the partition the checkpoint is associated with</param>
+        /// <param name="eventData">The event data to checkpoint to</param>
+        /// <param name="cancellationToken">A token to monitor for abort requests</param>
+        /// <returns>True if the checkpoing is saved successfully</returns>
         protected abstract Task<bool> SetCheckpointDataAsync(BlobClient blobClient, string partitionId, EventData eventData, CancellationToken cancellationToken);
 
-
+        /// <inheritdoc />
         public virtual async Task<IEnumerable<EventProcessorCheckpoint>> ListCheckpointsAsync(CancellationToken cancellationToken)
         {
             var checkpoints = new List<EventProcessorCheckpoint>();
@@ -237,6 +252,7 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
             return checkpoints;
         }
 
+        /// <inheritdoc />
         public virtual async Task<bool> UpdateCheckpointAsync(EventData eventData, PartitionContext context, CancellationToken cancellationToken)
         {
             var success = false;
@@ -329,5 +345,6 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
 
             return options;
         }
+        #endregion
     }
 }

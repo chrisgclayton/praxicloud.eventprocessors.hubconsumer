@@ -13,6 +13,7 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     using Azure.Messaging.EventHubs.Processor;
     using Microsoft.Extensions.Logging;
     using praxicloud.core.metrics;
+    using praxicloud.eventprocessors.hubconsumer.policies;
     #endregion
 
     /// <summary>
@@ -60,10 +61,26 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         /// The next count to checkpoint at
         /// </summary>
         private long _nextCheckpoint;
+
+        /// <summary>
+        /// The checkpointing policy in use
+        /// </summary>
+        private readonly ICheckpointPolicy _policy;
+
+        #endregion
+        #region Constructors
+        /// <summary>
+        /// Initializes a new instance of the type
+        /// </summary>
+        public BatchProcessor()
+        {
+            _policy = new PeriodicCheckpointPolicy(1000, TimeSpan.FromSeconds(15));
+        }
+
         #endregion
         #region Methods
         /// <inheritdoc />
-        public Task InitializeAsync(ILogger logger, IMetricFactory metricFactory, ProcessorPartitionContext partitionContext)
+        public async Task InitializeAsync(ILogger logger, IMetricFactory metricFactory, ProcessorPartitionContext partitionContext)
         {
             _logger = logger;
 
@@ -72,9 +89,9 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
                 _logger.LogInformation("Initializing batch processor for partition {partitionId}", partitionContext.PartitionId);
                 _messageCounter = metricFactory.CreateCounter($"ebp-message-count-{partitionContext.PartitionId}", "The number of messages that have been processed by partition {partitionContext.PartitionId}", false, new string[0]);
                 _errorCounter = metricFactory.CreateCounter($"ebp-error-count-{partitionContext.PartitionId}", "The number of errors that have been processed by partition {partitionContext.PartitionId}", false, new string[0]);
-            }
 
-            return Task.CompletedTask;
+                await _policy.InitializeAsync(_logger, metricFactory, partitionContext, CancellationToken.None).ConfigureAwait(false);
+            }
         }
 
         /// <inheritdoc />
@@ -100,7 +117,7 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
                 if (reason == ProcessingStoppedReason.Shutdown && _lastData != default)
                 {
                     _logger.LogInformation("Checkpointing in graceful shutdown for partition {partitionId}, sequence {sequenceNumber}", partitionContext.PartitionId, Enum.GetName(typeof(ProcessingStoppedReason), reason), _lastData.SequenceNumber);
-                    await partitionContext.CheckpointAsync(_lastData, cancellationToken).ConfigureAwait(false);
+                    _logger.LogDebug("Checkpointing {result} for partition {partitionId} during graceful shutdown", await _policy.CheckpointAsync(_lastData, true, cancellationToken).ConfigureAwait(false), partitionContext);
                     _logger.LogInformation("Checkpointed in graceful shutdown for partition {partitionId}, sequence {sequenceNumber}", partitionContext.PartitionId, Enum.GetName(typeof(ProcessingStoppedReason), reason), _lastData.SequenceNumber);
                 }
             }
@@ -134,21 +151,16 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
                     _messageCount += eventList.Length;
                     _lastData = eventList[eventList.Length - 1];
 
-                    if (_messageCount >= _nextCheckpoint)
-                    {
-                        await partitionContext.CheckpointAsync(_lastData, cancellationToken).ConfigureAwait(false);
-                        _nextCheckpoint += CheckpointInterval;
-                    }
+                    _policy.IncrementBy(eventList.Length);
                 }
                 else
                 {
                     _logger.LogInformation("No events in batch for partition {partitionId}", partitionContext.PartitionId);
+                }
 
-                    if (_lastData != default)
-                    {
-                        await partitionContext.CheckpointAsync(_lastData, cancellationToken).ConfigureAwait(false);
-                        _nextCheckpoint = _messageCount + CheckpointInterval;
-                    }
+                if (_lastData != default)
+                {
+                    _logger.LogDebug("Checkpointing {result} for partition {partitionId}", await _policy.CheckpointAsync(_lastData, false, cancellationToken).ConfigureAwait(false), partitionContext);
                 }
             }
         }

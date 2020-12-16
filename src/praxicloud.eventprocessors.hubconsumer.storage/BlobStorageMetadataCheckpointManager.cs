@@ -1,24 +1,23 @@
-﻿namespace praxicloud.eventprocessors.hubconsumer.storage
+﻿// Copyright (c) Christopher Clayton. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+namespace praxicloud.eventprocessors.hubconsumer.storage
 {
+    #region Using Clauses
     using Azure;
     using Azure.Core;
     using Azure.Messaging.EventHubs;
-    using Azure.Messaging.EventHubs.Consumer;
-    using Azure.Messaging.EventHubs.Primitives;
     using Azure.Storage.Blobs;
     using Azure.Storage.Blobs.Models;
     using Microsoft.Extensions.Logging;
     using praxicloud.core.metrics;
-    using praxicloud.core.security;
-    using praxicloud.eventprocessors.hubconsumer.checkpointing;
     using System;
-    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Globalization;
     using System.IO;
-    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    #endregion
 
     /// <summary>
     /// A checkpoint manager that uses metadata on Azure Storage Blobs to maintain checkpoint data
@@ -30,7 +29,6 @@
         /// The metadata key of the BLOB where the sequence number is stored
         /// </summary>
         private const string SequenceNumber = "sequencenumber";
-
         #endregion
         #region Constructors
         /// <summary>
@@ -58,7 +56,7 @@
         {
         }
         #endregion
-
+        #region Methods
         /// <inheritdoc />
         protected override Task<long?> GetCheckpointSequenceNumberAsync(string partitionId, BlobItem blob, CancellationToken cancellationToken)
         {
@@ -121,5 +119,6 @@
 
             return success;
         }
+        #endregion
     }
 }
