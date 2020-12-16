@@ -178,7 +178,6 @@ namespace praxicloud.eventprocessors.hubconsumer.leasing
                 var desired = desiredOwnership.ToArray();
 
                 results = new List<EventProcessorPartitionOwnership>(desired.Length);
-                var index = 0;
 
                 foreach (var partitionOwnership in desired)
                 {

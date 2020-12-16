@@ -14,12 +14,13 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     using Microsoft.Extensions.Logging;
     using praxicloud.core.metrics;
     using praxicloud.eventprocessors.hubconsumer.policies;
+    using praxicloud.eventprocessors.hubconsumer.processors;
     #endregion
 
     /// <summary>
     /// A batch event processor
     /// </summary>
-    public sealed class BatchProcessor : IEventBatchProcessor
+    public sealed class BatchProcessor : Processor, IEventBatchProcessor
     {
         #region Variables
         /// <summary>
@@ -31,21 +32,6 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         /// The maximum interval to delay before checkpointing if the batch is not full
         /// </summary>
         private static long CheckpointInterval = 10000;
-
-        /// <summary>
-        /// A logger to write debugging and diagnostics information to
-        /// </summary>
-        private ILogger _logger;
-
-        /// <summary>
-        /// A metric container that counts the number of messages received
-        /// </summary>
-        private ICounter _messageCounter;
-
-        /// <summary>
-        /// A metric counter that counts the number of errors that have occured
-        /// </summary>
-        private ICounter _errorCounter;
 
         /// <summary>
         /// The last event data received for checkpointing use
@@ -76,49 +62,32 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         {
             _policy = new PeriodicCheckpointPolicy(1000, TimeSpan.FromSeconds(15));
         }
-
         #endregion
         #region Methods
         /// <inheritdoc />
-        public async Task InitializeAsync(ILogger logger, IMetricFactory metricFactory, ProcessorPartitionContext partitionContext)
+        public override async Task InitializeAsync(ILogger logger, IMetricFactory metricFactory, ProcessorPartitionContext partitionContext)
         {
-            _logger = logger;
-
-            using (_logger.BeginScope("Initialize batch processor"))
-            {
-                _logger.LogInformation("Initializing batch processor for partition {partitionId}", partitionContext.PartitionId);
-                _messageCounter = metricFactory.CreateCounter($"ebp-message-count-{partitionContext.PartitionId}", "The number of messages that have been processed by partition {partitionContext.PartitionId}", false, new string[0]);
-                _errorCounter = metricFactory.CreateCounter($"ebp-error-count-{partitionContext.PartitionId}", "The number of errors that have been processed by partition {partitionContext.PartitionId}", false, new string[0]);
-
-                await _policy.InitializeAsync(_logger, metricFactory, partitionContext, CancellationToken.None).ConfigureAwait(false);
-            }
+            await base.InitializeAsync(logger, metricFactory, partitionContext).ConfigureAwait(false);
+            await _policy.InitializeAsync(Logger, metricFactory, partitionContext, CancellationToken.None).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
-        public Task PartitionInitializeAsync(ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
+        public override async Task PartitionInitializeAsync(ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
         {
-            using (_logger.BeginScope("OnInitialize"))
-            {
-                _nextCheckpoint = CheckpointInterval;
-
-                _logger.LogInformation("Initializing partition {partitionId}", partitionContext.PartitionId);
-            }
-
-            return Task.CompletedTask;
+            await base.PartitionInitializeAsync(partitionContext, cancellationToken).ConfigureAwait(false);
+            _nextCheckpoint = CheckpointInterval;
         }
 
         /// <inheritdoc />
-        public async Task PartitionStopAsync(ProcessorPartitionContext partitionContext, ProcessingStoppedReason reason, CancellationToken cancellationToken)
+        public override async Task PartitionStopAsync(ProcessorPartitionContext partitionContext, ProcessingStoppedReason reason, CancellationToken cancellationToken)
         {
-            using (_logger.BeginScope("OnStop"))
-            {
-                _logger.LogInformation("Stopping partition {partitionId}, reason {reason}", partitionContext.PartitionId, Enum.GetName(typeof(ProcessingStoppedReason), reason));
+            await base.PartitionStopAsync(partitionContext, reason, cancellationToken).ConfigureAwait(false);
 
+            using (Logger.BeginScope("Batch OnStop"))
+            {
                 if (reason == ProcessingStoppedReason.Shutdown && _lastData != default)
                 {
-                    _logger.LogInformation("Checkpointing in graceful shutdown for partition {partitionId}, sequence {sequenceNumber}", partitionContext.PartitionId, Enum.GetName(typeof(ProcessingStoppedReason), reason), _lastData.SequenceNumber);
-                    _logger.LogDebug("Checkpointing {result} for partition {partitionId} during graceful shutdown", await _policy.CheckpointAsync(_lastData, true, cancellationToken).ConfigureAwait(false), partitionContext);
-                    _logger.LogInformation("Checkpointed in graceful shutdown for partition {partitionId}, sequence {sequenceNumber}", partitionContext.PartitionId, Enum.GetName(typeof(ProcessingStoppedReason), reason), _lastData.SequenceNumber);
+                    Logger.LogDebug("Checkpointing {result} for partition {partitionId} during graceful shutdown", await _policy.CheckpointAsync(_lastData, true, cancellationToken).ConfigureAwait(false), partitionContext);
                 }
             }
 
@@ -126,28 +95,16 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         }
 
         /// <inheritdoc />
-        public Task PartitionHandleErrorAsync(Exception exception, ProcessorPartitionContext partitionContext, string operationDescription, CancellationToken cancellationToken)
-        {
-            using (_logger.BeginScope("OnError"))
-            {
-                _errorCounter.Increment();
-                _logger.LogError(exception, "Erron partition {partitionId}, {operationDescription}", partitionContext.PartitionId, operationDescription);
-            }
-
-            return Task.CompletedTask;
-        }
-
-        /// <inheritdoc />
         public async Task PartitionProcessAsync(IEnumerable<EventData> events, ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
         {
-            using (_logger.BeginScope("Processing Event Batch"))
+            using (Logger.BeginScope("Processing Event Batch"))
             {
                 var eventList = events?.ToArray() ?? _defaultEventArray;
 
                 if (eventList.Length > 0)
                 {
-                    _logger.LogInformation("Events received for partition {partitionId}: {count}", partitionContext.PartitionId, eventList.Length);
-                    _messageCounter.IncrementBy(eventList.Length);
+                    Logger.LogInformation("Events received for partition {partitionId}: {count}", partitionContext.PartitionId, eventList.Length);
+                    MessageCounter.IncrementBy(eventList.Length);
                     _messageCount += eventList.Length;
                     _lastData = eventList[eventList.Length - 1];
 
@@ -155,12 +112,12 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
                 }
                 else
                 {
-                    _logger.LogInformation("No events in batch for partition {partitionId}", partitionContext.PartitionId);
+                    Logger.LogInformation("No events in batch for partition {partitionId}", partitionContext.PartitionId);
                 }
 
                 if (_lastData != default)
                 {
-                    _logger.LogDebug("Checkpointing {result} for partition {partitionId}", await _policy.CheckpointAsync(_lastData, false, cancellationToken).ConfigureAwait(false), partitionContext);
+                    Logger.LogDebug("Checkpointing {result} for partition {partitionId}", await _policy.CheckpointAsync(_lastData, false, cancellationToken).ConfigureAwait(false), partitionContext);
                 }
             }
         }

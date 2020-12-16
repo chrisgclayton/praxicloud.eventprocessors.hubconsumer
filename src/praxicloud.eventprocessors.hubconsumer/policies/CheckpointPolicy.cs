@@ -98,17 +98,18 @@ namespace praxicloud.eventprocessors.hubconsumer.policies
             Guard.NotNull(nameof(metricFactory), metricFactory);
             Guard.NotNull(nameof(context), context);
 
+            Logger = logger;
+
             using (Logger.BeginScope("Initializing Policy Manager"))
             {
-                Logger = logger;
                 MetricFactory = metricFactory;
                 Context = context;
 
                 Logger.LogInformation("Initializing policy manager {name}", Name);
 
-                _checkpointExecutedCounter = MetricFactory.CreateCounter("cpol-execution-count", "Counts the number of times a checkpoint has been performed", false, new string[] { context.PartitionId });
-                _checkpointErrorCounter = MetricFactory.CreateCounter("cpol-error-count", "Counts the number of times a checkpoint has generated an error", false, new string[] { context.PartitionId });
-                _checkpointRequestedCounter = MetricFactory.CreateCounter("cpol-requested-count", "Counts the number of times a checkpoint has been requested", false, new string[] { context.PartitionId });
+                _checkpointExecutedCounter = MetricFactory.CreateCounter("cpol-execution-count", "Counts the number of times a checkpoint has been performed", false, new string[0]);
+                _checkpointErrorCounter = MetricFactory.CreateCounter("cpol-error-count", "Counts the number of times a checkpoint has generated an error", false, new string[0]);
+                _checkpointRequestedCounter = MetricFactory.CreateCounter("cpol-requested-count", "Counts the number of times a checkpoint has been requested", false, new string[0]);
             }
 
             return Task.FromResult(true);
