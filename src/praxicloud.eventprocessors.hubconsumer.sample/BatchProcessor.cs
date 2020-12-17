@@ -12,7 +12,9 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     using Azure.Messaging.EventHubs;
     using Azure.Messaging.EventHubs.Processor;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
     using praxicloud.core.metrics;
+    using praxicloud.core.security;
     using praxicloud.eventprocessors.hubconsumer.policies;
     using praxicloud.eventprocessors.hubconsumer.processors;
     #endregion
@@ -53,14 +55,22 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         /// </summary>
         private readonly ICheckpointPolicy _policy;
 
+        /// <summary>
+        /// The poison message monitor in use by the batch
+        /// </summary>
+        private readonly IPoisonedMonitor _poisonedMonitor;
         #endregion
         #region Constructors
         /// <summary>
         /// Initializes a new instance of the type
         /// </summary>
-        public BatchProcessor()
+        public BatchProcessor(ICheckpointPolicy checkpointPolicy, IPoisonedMonitor poisonMonitor)
         {
-            _policy = new PeriodicCheckpointPolicy(1000, TimeSpan.FromSeconds(15));
+            Guard.NotNull(nameof(checkpointPolicy), checkpointPolicy);
+            Guard.NotNull(nameof(poisonMonitor), poisonMonitor);
+
+            _poisonedMonitor = poisonMonitor;
+            _policy = checkpointPolicy; 
         }
         #endregion
         #region Methods
@@ -68,7 +78,7 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         public override async Task InitializeAsync(ILogger logger, IMetricFactory metricFactory, ProcessorPartitionContext partitionContext)
         {
             await base.InitializeAsync(logger, metricFactory, partitionContext).ConfigureAwait(false);
-            await _policy.InitializeAsync(Logger, metricFactory, partitionContext, CancellationToken.None).ConfigureAwait(false);
+            await _policy.InitializeAsync(Logger, metricFactory, partitionContext, CancellationToken.None).ConfigureAwait(false);            
         }
 
         /// <inheritdoc />

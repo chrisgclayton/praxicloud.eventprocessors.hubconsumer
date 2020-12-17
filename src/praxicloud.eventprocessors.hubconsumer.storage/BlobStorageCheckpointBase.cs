@@ -153,7 +153,7 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
             {
                 try
                 {
-                    Logger.LogInformation("Creating checkpoing store");
+                    Logger.LogInformation("Creating checkpoint store");
                     await Client.CreateIfNotExistsAsync().ConfigureAwait(false);
                     success = true;
                     Logger.LogDebug("Completed store creation");
