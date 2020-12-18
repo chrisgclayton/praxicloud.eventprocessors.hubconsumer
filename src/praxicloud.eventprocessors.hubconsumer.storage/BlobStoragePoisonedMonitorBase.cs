@@ -9,6 +9,7 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
     using System.Collections.Generic;
     using System.Globalization;
     using System.IO;
+    using System.Linq.Expressions;
     using System.Threading;
     using System.Threading.Tasks;
     using Azure;
@@ -78,11 +79,6 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
         /// A summary metric container that records blob read timings
         /// </summary>
         private ISummary _readBlobTiming;
-
-        /// <summary>
-        /// The id of the partition being tracked
-        /// </summary>
-        private string _partitionId;
 
         /// <summary>
         /// The current poison message data
@@ -192,14 +188,30 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
                 {
                     Logger.LogInformation("Reading poison data");
 
-                    var blobName = string.Format(_blobNameFormatString, data.PartitionId);
+                    var blobName = string.Format(_blobNameFormatString, partitionId);
                     var blobClient = Client.GetBlobClient(blobName);
 
-                    Response<BlobProperties> response;
+                    Response<BlobProperties> response = null;
 
                     using (_readBlobTiming.Time())
                     {
-                        response = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            response = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                        }
+                        catch(RequestFailedException e) when (e.ErrorCode == BlobErrorCode.BlobNotFound || e.ErrorCode == BlobErrorCode.ContainerNotFound) 
+                        {
+                            Logger.LogInformation("Poison monitor data not found for partition {partitionId} attempting to create", partitionId);
+
+                            await UpdatePoisonDataAsync(new PoisonData 
+                            { 
+                                PartitionId = partitionId,
+                                ReceiveCount = 0,
+                                SequenceNumber = -1
+                            }, cancellationToken).ConfigureAwait(false);
+
+                            response = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                        }
                     }
 
                     if (response.Value != null)
@@ -220,7 +232,7 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
 
                         data = new PoisonData
                         {
-                            PartitionId = _partitionId,
+                            PartitionId = partitionId,
                             ReceiveCount = receiveCount ?? 0,
                             SequenceNumber = sequenceNumber ?? -1L
                         };
@@ -241,10 +253,10 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
             {
                 Logger.LogDebug("Initializing poison message store");
                 // Use the same prefix as the checkpoint store if it exists to reduce user configuration requirements
-                _messageStorePrefix = string.IsNullOrWhiteSpace(options.CheckpointPrefix) ? string.Format(CultureInfo.InvariantCulture, client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.ToLowerInvariant()) :
-                                                                          string.Format(CultureInfo.InvariantCulture, options.CheckpointPrefix, client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.ToLowerInvariant());
+                _messageStorePrefix = string.IsNullOrWhiteSpace(options.CheckpointPrefix) ? string.Format(CultureInfo.InvariantCulture, "{0}/{1}/{2}", client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.Replace("$", "").ToLowerInvariant()) :
+                                                                          string.Format(CultureInfo.InvariantCulture, "{0}/{1}/{2}/{3}", options.CheckpointPrefix, client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.Replace("$", "").ToLowerInvariant());
                 Logger.LogInformation("Store prefix {location}", _messageStorePrefix);
-                _blobNameFormatString = string.Concat(_messageStorePrefix, "{0}");
+                _blobNameFormatString = string.Concat(_messageStorePrefix, "/{0}");
             }
 
             return Task.FromResult(true);

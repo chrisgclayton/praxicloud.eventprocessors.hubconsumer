@@ -174,10 +174,10 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
             {
                 Logger.LogDebug("Initializing checkpoint store");
 
-                _checkpointPrefix = string.IsNullOrWhiteSpace(options.CheckpointPrefix) ? string.Format(CultureInfo.InvariantCulture, client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.ToLowerInvariant()) :
-                                                                                          string.Format(CultureInfo.InvariantCulture, options.CheckpointPrefix, client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.ToLowerInvariant());
+                _checkpointPrefix = string.IsNullOrWhiteSpace(options.CheckpointPrefix) ? string.Format(CultureInfo.InvariantCulture, "{0}/{1}/{2}", client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.Replace("$", "").ToLowerInvariant()) :
+                                                                                          string.Format(CultureInfo.InvariantCulture, "{0}/{1}/{2}/{3}", options.CheckpointPrefix, client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.Replace("$", "").ToLowerInvariant());
                 Logger.LogInformation("Store prefix {location}", _checkpointPrefix);
-                _blobNameFormatString = string.Concat(_checkpointPrefix, "{0}");
+                _blobNameFormatString = string.Concat(_checkpointPrefix, "/{0}");
                 _processorClient = client;
             }
 
@@ -219,7 +219,7 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
 
                     await foreach (BlobItem blob in Client.GetBlobsAsync(traits: BlobTraits.Metadata, prefix: _checkpointPrefix, cancellationToken: cancellationToken).ConfigureAwait(false))
                     {
-                        var partitionId = blob.Name.Substring(_checkpointPrefix.Length);
+                        var partitionId = blob.Name.Substring(_checkpointPrefix.Length + 1);
                         var startingPosition = default(EventPosition?);
 
                         Logger.LogDebug("Retrieved blob for partition {partitionId}", partitionId);

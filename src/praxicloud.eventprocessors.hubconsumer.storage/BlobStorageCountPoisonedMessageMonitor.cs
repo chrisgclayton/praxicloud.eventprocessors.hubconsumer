@@ -65,7 +65,9 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
         /// <inheritdoc />
         protected override bool CheckIfPoisoned(string partitionId, long sequenceNumber, PoisonData data)
         {
-            return (data.SequenceNumber ?? -1) >= 0 && data.ReceiveCount > _allowedReceiveCount;
+            var poisonDataSequenceNumber = data.SequenceNumber ?? -1;
+
+            return poisonDataSequenceNumber >= 0 && data.ReceiveCount > _allowedReceiveCount && poisonDataSequenceNumber == sequenceNumber;
         }
         #endregion
     }

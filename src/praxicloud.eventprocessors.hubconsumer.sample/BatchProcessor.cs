@@ -31,11 +31,6 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         private static readonly EventData[] _defaultEventArray = new EventData[0];
 
         /// <summary>
-        /// The maximum interval to delay before checkpointing if the batch is not full
-        /// </summary>
-        private static long CheckpointInterval = 10000;
-
-        /// <summary>
         /// The last event data received for checkpointing use
         /// </summary>
         private EventData _lastData = default;
@@ -46,11 +41,6 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         private long _messageCount;
 
         /// <summary>
-        /// The next count to checkpoint at
-        /// </summary>
-        private long _nextCheckpoint;
-
-        /// <summary>
         /// The checkpointing policy in use
         /// </summary>
         private readonly ICheckpointPolicy _policy;
@@ -59,6 +49,11 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         /// The poison message monitor in use by the batch
         /// </summary>
         private readonly IPoisonedMonitor _poisonedMonitor;
+
+        /// <summary>
+        /// True if the batch is the first to be processed
+        /// </summary>
+        private bool _isFirstBatch = true;
         #endregion
         #region Constructors
         /// <summary>
@@ -82,13 +77,6 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         }
 
         /// <inheritdoc />
-        public override async Task PartitionInitializeAsync(ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
-        {
-            await base.PartitionInitializeAsync(partitionContext, cancellationToken).ConfigureAwait(false);
-            _nextCheckpoint = CheckpointInterval;
-        }
-
-        /// <inheritdoc />
         public override async Task PartitionStopAsync(ProcessorPartitionContext partitionContext, ProcessingStoppedReason reason, CancellationToken cancellationToken)
         {
             await base.PartitionStopAsync(partitionContext, reason, cancellationToken).ConfigureAwait(false);
@@ -97,11 +85,125 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
             {
                 if (reason == ProcessingStoppedReason.Shutdown && _lastData != default)
                 {
-                    Logger.LogDebug("Checkpointing {result} for partition {partitionId} during graceful shutdown", await _policy.CheckpointAsync(_lastData, true, cancellationToken).ConfigureAwait(false), partitionContext);
+                    var checkpointSuccess = false;
+
+                    try
+                    {
+                        Logger.LogDebug("Checkpointing for partition {partitionId} during graceful shutdown", partitionContext.PartitionId);
+                        checkpointSuccess = await _policy.CheckpointAsync(_lastData, true, cancellationToken).ConfigureAwait(false);
+                        Logger.LogInformation("Checkpointing for partition {partitionId} returned {checkpointSuccess}", partitionContext.PartitionId, checkpointSuccess);
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.LogError(e, "Error checkpointing during graceful shutdown");
+                    }
                 }
             }
 
             Interlocked.Add(ref Program.TotalMessageCount, _messageCount);
+        }
+
+        private async Task<bool> UpdatePoisonMonitorStatusAsync(EventData data, ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
+        {
+            var shouldProcess = false;
+
+            try
+            {
+                Logger.LogInformation("Partition {partitionId} checking if Sequence Number {sequenceNumber} is poisoned", partitionContext.PartitionId, data.SequenceNumber);
+
+                if (await _poisonedMonitor.IsPoisonedMessageAsync(partitionContext.PartitionId, data.SequenceNumber, cancellationToken).ConfigureAwait(false))
+                {
+                    var handled = false;
+
+                    for (var handleIndex = 0; handleIndex < 3 && !handled; handleIndex++)
+                    {
+                        try
+                        {
+                            Logger.LogWarning("Partition {partitionId} found Sequence Number {sequenceNumber} is poisoned", partitionContext.PartitionId, data.SequenceNumber);
+                            handled = await HandlePoisonMessageAsync(data, partitionContext, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (Exception e)
+                        {
+                            Logger.LogError(e, "Partition {partitionId} error handling poison message {sequenceNumber}", partitionContext.PartitionId, data.SequenceNumber);
+                        }
+                    }
+
+                    var checkpointSuccess = false;
+
+                    for (var checkpointAttempt = 0; checkpointAttempt < 3 && !checkpointSuccess; checkpointAttempt++)
+                    {
+                        // Immediately checkpoint to move this forward and do not process further
+                        await _policy.CheckpointAsync(data, true, cancellationToken).ConfigureAwait(false);
+                        checkpointSuccess = true;
+                    }
+                }
+                else
+                {
+                    Logger.LogInformation("Partition {partitionId} Sequence Number {sequenceNumber} is not poisoned", partitionContext.PartitionId, data.SequenceNumber);
+
+                    shouldProcess = true;
+                    PoisonData poisonData = null;
+
+                    for (var retrieveAttempt = 0; retrieveAttempt < 3 && poisonData == null; retrieveAttempt++)
+                    {
+                        try
+                        {
+                            poisonData = await _poisonedMonitor.GetPoisonDataAsync(partitionContext.PartitionId, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch(Exception e)
+                        {
+                            Logger.LogError(e, "Error retrieving poison message data for partition {partitionId}", partitionContext.PartitionId);
+                        }
+                    }
+
+                    if (poisonData.SequenceNumber == -1)
+                    {
+                        poisonData.SequenceNumber = data.SequenceNumber;
+                        poisonData.ReceiveCount = 0;
+                    }
+                    else if(poisonData.SequenceNumber == data.SequenceNumber)
+                    {
+                        poisonData.ReceiveCount = poisonData.ReceiveCount + 1;
+                    }
+                    else
+                    {
+                        poisonData.ReceiveCount = 1;
+                        poisonData.SequenceNumber = data.SequenceNumber;
+                    }
+
+                    var updateSuccess = false;
+
+                    for (var retrieveAttempt = 0; retrieveAttempt < 3 && !updateSuccess; retrieveAttempt++)
+                    {
+                        try
+                        {
+                            updateSuccess = await _poisonedMonitor.UpdatePoisonDataAsync(poisonData, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch(Exception e)
+                        {
+                            Logger.LogError(e, "Error updating poison message data for partition {partitionId}", partitionContext.PartitionId);
+                        }
+                    }                    
+                }                
+            }
+            catch (Exception e)
+            {
+                Logger.LogError(e, "Unknown error cannot in poison message handling for partition {partitionId} with sequence Number {sequenceNumber}, ignoring message", partitionContext.PartitionId, data.SequenceNumber);
+            }
+
+            return shouldProcess;
+        }
+
+        private Task<bool> HandlePoisonMessageAsync(EventData data, ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
+        {
+            Logger.LogWarning("Partition {partitionId}, consider poison message Sequence Number {sequenceNumber} handled", partitionContext.PartitionId, data.SequenceNumber);
+
+            return Task.FromResult(true);
+        }
+
+        private async Task DelayForABitAsync()
+        {
+            await Task.Delay(5000).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
@@ -109,25 +211,57 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         {
             using (Logger.BeginScope("Processing Event Batch"))
             {
-                var eventList = events?.ToArray() ?? _defaultEventArray;
-
-                if (eventList.Length > 0)
+                if(events != null)
                 {
-                    Logger.LogInformation("Events received for partition {partitionId}: {count}", partitionContext.PartitionId, eventList.Length);
-                    MessageCounter.IncrementBy(eventList.Length);
-                    _messageCount += eventList.Length;
-                    _lastData = eventList[eventList.Length - 1];
+                    var eventList = events.ToList();
 
-                    _policy.IncrementBy(eventList.Length);
+                    if (eventList.Count > 0)
+                    {
+                        if (_isFirstBatch)
+                        {
+                            if (!await UpdatePoisonMonitorStatusAsync(eventList[0], partitionContext, cancellationToken).ConfigureAwait(false))
+                            {
+                                eventList.RemoveAt(0);
+                            }
+
+                            _isFirstBatch = false;
+                        }
+
+                        if(eventList.Count > 0)
+                        {
+                            Logger.LogInformation("Events received for partition {partitionId}: {count}", partitionContext.PartitionId, eventList.Count);
+                            MessageCounter.IncrementBy(eventList.Count);
+                            _messageCount += eventList.Count;
+                            _lastData = eventList[eventList.Count - 1];
+
+                            _policy.IncrementBy(eventList.Count);
+
+                            await DelayForABitAsync().ConfigureAwait(false);
+                            var checkpointResult = await _policy.CheckpointAsync(_lastData, false, cancellationToken).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            Logger.LogInformation("No events in batch for partition {partitionId}, removed in poison message test", partitionContext.PartitionId);
+                        }
+                    }
                 }
                 else
                 {
-                    Logger.LogInformation("No events in batch for partition {partitionId}", partitionContext.PartitionId);
-                }
+                    if (_lastData != default)
+                    {
+                        Logger.LogDebug("No events in batch checkpointing for partition {partitionId}", partitionContext.PartitionId);
 
-                if (_lastData != default)
-                {
-                    Logger.LogDebug("Checkpointing {result} for partition {partitionId}", await _policy.CheckpointAsync(_lastData, false, cancellationToken).ConfigureAwait(false), partitionContext);
+                        try
+                        {
+                            var checkpointResult = await _policy.CheckpointAsync(_lastData, false, cancellationToken).ConfigureAwait(false);
+                            Logger.LogInformation("Checkpointing for partition {partitionId} success code {successCode}", partitionContext.PartitionId, checkpointResult);
+                        }
+                        catch (Exception e)
+                        {
+                            Logger.LogError(e, "Checkpointing for partition {partitionId} raised an exception", partitionContext.PartitionId);
+                            throw;
+                        }
+                    }
                 }
             }
         }
