@@ -105,77 +105,14 @@ namespace praxicloud.eventprocessors.hubconsumer
             return _processorFactory(logger, metricFactory, partitionContext);
         }
 
-
-        //private async Task<string> WaitForItAsync(string partitionId)
-        //{
-        //    await Task.Delay(10000).ConfigureAwait(false);
-
-        //    return partitionId;
-        //}
-
         /// <inheritdoc />
         protected sealed override async Task ProcessBatchAsync(IEnumerable<EventData> events, IProcessor processor, ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
         {
-            //var newTask = WaitForItAsync(partitionContext.PartitionId);
-
-            //if (_processingTasks.TryGetValue(partitionContext.PartitionId, out var currentTask))
-            //{
-            //    _processingTasks.AddOrUpdate(partitionContext.PartitionId, newTask, (upPartitionId, upTask) =>
-            //    {
-            //        if(upTask.Id != newTask.Id && !upTask.IsCompleted)
-            //        {
-            //            throw new ApplicationException("OOOPS the previous was not complete");
-            //        }
-
-            //        return newTask;
-            //    });
-            //}
-            //else
-            //{
-            //    if(!_processingTasks.TryAdd(partitionContext.PartitionId, newTask))
-            //    {
-            //        throw new ApplicationException("OOPS Error Adding");
-            //    }
-            //}
-
-            //await newTask.ConfigureAwait(false);
-
             var processorInstance = processor as IEventBatchProcessor;
 
             try
             {
                 await processorInstance.PartitionProcessAsync(events, partitionContext, cancellationToken).ConfigureAwait(false);
-                // TODO: Breakout in delays etc.
-
-                //if (_processingTasks.TryGetValue(partitionContext.PartitionId, out var previousTask))
-                //{
-                //    if (previousTask == null || !previousTask.IsCompleted)
-                //    {
-                //        throw new ApplicationException("Previous task was not completed");
-                //    }
-                //    else
-                //    {
-                //        _processingTasks[partitionContext.PartitionId] = processorInstance.PartitionProcessAsync(events, partitionContext, cancellationToken);
-
-                //        if (previousTask.IsFaulted)
-                //        {
-                //            try
-                //            {
-                //                // Check for exception
-                //                await previousTask.ConfigureAwait(false);
-                //            }
-                //            catch (Exception e)
-                //            {
-                //                _logger.LogError(e, "Error in processing of batch");
-                //            }
-                //        }
-                //    }
-                //}
-                //else
-                //{
-                //    var processingTask = processorInstance.PartitionProcessAsync(events, partitionContext, cancellationToken).ConfigureAwait(false);
-                //    _processingTasks.TryAdd(partitionContext.PartitionId, previousTask);
-                //}
             }
             catch (Exception e) when (!(e is TaskCanceledException))
             {

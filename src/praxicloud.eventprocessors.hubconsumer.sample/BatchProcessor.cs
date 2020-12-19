@@ -201,11 +201,6 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
             return Task.FromResult(true);
         }
 
-        private async Task DelayForABitAsync()
-        {
-            await Task.Delay(5000).ConfigureAwait(false);
-        }
-
         /// <inheritdoc />
         public async Task PartitionProcessAsync(IEnumerable<EventData> events, ProcessorPartitionContext partitionContext, CancellationToken cancellationToken)
         {
@@ -236,8 +231,13 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
 
                             _policy.IncrementBy(eventList.Count);
 
-                            await DelayForABitAsync().ConfigureAwait(false);
+
+                            /*
+                             Do work here
+                             */
+                            Logger.LogInformation("Starting policy checkpoint for partition {partitionId}: {count}", partitionContext.PartitionId, eventList.Count);
                             var checkpointResult = await _policy.CheckpointAsync(_lastData, false, cancellationToken).ConfigureAwait(false);
+                            Logger.LogInformation("Completed policy checkpoint for partition {partitionId}: {count}", partitionContext.PartitionId, eventList.Count);
                         }
                         else
                         {

@@ -125,20 +125,24 @@ namespace praxicloud.eventprocessors.hubconsumer.policies
             using(Logger.BeginScope("Checkpoint Requested"))
             {
                 _checkpointRequestedCounter.Increment();
-                Logger.LogDebug("Checkpoint requested for partition {partitionId}.", Context.PartitionId);
+                Logger.LogInformation("Checkpoint requested for partition {partitionId}.", Context.PartitionId);
 
                 var messageCount = _messageCount;
+                var shouldCheckpoint = ShouldCheckpoint(messageCount);
+                var sequenceNumberChanged = _lastSequenceNumber < eventData.SequenceNumber;
 
-                if (force || ShouldCheckpoint(messageCount))
+                Logger.LogDebug("Checkpoint decision for for partition {partitionId}, force = {force}, shouldCheck = {shouldCheckpoint}, sequence number changed = {sequenceNumberChanged}.", Context.PartitionId, force, shouldCheckpoint, sequenceNumberChanged);
+
+                if ((force || shouldCheckpoint) && sequenceNumberChanged)
                 {
                     var lockAcquired = false;
                     await _checkpointControl.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     try
                     {
-                        if ((force || ShouldCheckpoint(messageCount)) && _lastSequenceNumber < eventData.SequenceNumber)
+                        if (_lastSequenceNumber < eventData.SequenceNumber)
                         {
-                            Logger.LogDebug("Checkpointing, force={force}", force);
+                            Logger.LogDebug("Partition {partitionId} sequence numb", force);
 
                             lockAcquired = true;
                             _checkpointExecutedCounter.Increment();
@@ -168,6 +172,11 @@ namespace praxicloud.eventprocessors.hubconsumer.policies
                             _checkpointControl.Release();
                         }
                     }
+                }
+                else
+                {
+                    // Consider checkpointing successful because it was not required
+                    checkpointed = true;
                 }
             }
 

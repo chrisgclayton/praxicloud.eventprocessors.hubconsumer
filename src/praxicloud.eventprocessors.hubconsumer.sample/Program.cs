@@ -76,8 +76,7 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
             var logger = loggerFactory.CreateLogger("EphDemo");
             var leaseLogger = loggerFactory.CreateLogger("EphLeaseDemo");
             var checkpointLogger = loggerFactory.CreateLogger("EphCheckpointDemo");
-            var checkpointPolicy = new PeriodicCheckpointPolicy(1000, TimeSpan.FromSeconds(15));
-
+            
 
             var ConnectionStringPartition = Environment.GetEnvironmentVariable("PraxiDemo:HubConnectionString");
             if (string.IsNullOrWhiteSpace(ConnectionStringPartition)) throw new ApplicationException("The Event Hub Connection string must be in the environment variable named 'PraxiDemo:HubConnectionString'");
@@ -113,6 +112,8 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
 
             var processor = new FixedBatchProcessorClient<BatchProcessor>(logger, metricFactory, ConnectionStringPartition, "$default", processorOptions, leaseManager, checkpointManager, (logger, metricFactory, partitionContext) =>
             {
+                var checkpointPolicy = new PeriodicCheckpointPolicy(1000, TimeSpan.FromSeconds(15));
+
                 return new BatchProcessor(checkpointPolicy, poisonMessageMonitor);
             });
 
