@@ -15,6 +15,12 @@ namespace praxicloud.eventprocessors.hubconsumer.poisoned
     /// </summary>
     public sealed class NoopPoisonedMonitor : IPoisonedMonitor
     {
+        #region Variables
+        /// <summary>
+        /// A simple poison message handling instance that is a noop
+        /// </summary>
+        private readonly static IPoisonedMonitor _instance = new NoopPoisonedMonitor();
+        #endregion
         #region Properties
         /// <inheritdoc />
         public string Name => nameof(NoopPoisonedMonitor);
@@ -54,6 +60,11 @@ namespace praxicloud.eventprocessors.hubconsumer.poisoned
         {
             return Task.FromResult(true);
         }
+
+        /// <summary>
+        /// A singleton instance of the monitor
+        /// </summary>
+        public static IPoisonedMonitor Instance => _instance;
         #endregion
     }
 }

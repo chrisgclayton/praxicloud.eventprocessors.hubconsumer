@@ -63,7 +63,9 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
             }
             finally
             {
+                Thread.Sleep(1000);
                 Console.WriteLine($"The total number of messages processed was {TotalMessageCount} in {_watch.ElapsedMilliseconds} ms for a total of {(TotalMessageCount / TimeSpan.FromMilliseconds(_watch.ElapsedMilliseconds).TotalSeconds)} / second");
+                Thread.Sleep(1000);
                 Console.ReadLine();
             }
         }
@@ -86,7 +88,43 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
 
             var leaseManager = new FixedLeaseManager(leaseLogger, metricFactory, ConnectionStringPartition, 0, 1);
             var checkpointManager = new BlobStorageMetadataCheckpointManager(checkpointLogger, metricFactory, "checkpoints", ConnectionStringStorage);
-            var processorOptions = new FixedProcessorClientOptions
+            var processorOptions = GetClientOptions();
+
+            var poisonMessageMonitor = new BlobStorageCountPoisonedMessageMonitor(logger, metricFactory, "poisonmonitor", ConnectionStringStorage, 4);
+
+            var processor = new FixedBatchProcessorClient<DemoProcessor>(logger, metricFactory, ConnectionStringPartition, "$default", processorOptions, leaseManager, checkpointManager, (logger, metricFactory, partitionContext) =>
+            {
+                return new DemoProcessor(1000, TimeSpan.FromSeconds(15));
+            });
+
+            await leaseManager.InitializeAsync((FixedProcessorClient)processor, processorOptions, CancellationToken.None).ConfigureAwait(false);
+            await checkpointManager.InitializeAsync(processor, processorOptions, CancellationToken.None).ConfigureAwait(false);
+            await poisonMessageMonitor.InitializeAsync(processor, processorOptions, logger, metricFactory, CancellationToken.None).ConfigureAwait(false);
+            await poisonMessageMonitor.CreateStoreIfNotExistsAsync(processor, processorOptions, CancellationToken.None).ConfigureAwait(false);
+
+            await processor.InitializeAsync(CancellationToken.None).ConfigureAwait(false);
+            await processor.StartProcessingAsync(CancellationToken.None).ConfigureAwait(false);
+
+            _watch = Stopwatch.StartNew();
+
+            while (_continueProcessing)
+            {
+                await Task.Delay(500).ConfigureAwait(false);
+            }
+
+            await processor.StopProcessingAsync(CancellationToken.None).ConfigureAwait(false);
+            _watch.Stop();
+
+            // Allow cleanup
+            while(processor.IsRunning)
+            {
+                await Task.Delay(1000).ConfigureAwait(false);
+            }
+        }
+
+        private static FixedProcessorClientOptions GetClientOptions()
+        {
+            return new FixedProcessorClientOptions
             {
                 CheckpointPrefix = null,
                 BatchSize = 50,
@@ -107,33 +145,6 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
                 StartingPosition = Azure.Messaging.EventHubs.Consumer.EventPosition.Earliest,
                 TrackLastEnqueuedEventProperties = true
             };
-
-            var poisonMessageMonitor = new BlobStorageCountPoisonedMessageMonitor(logger, metricFactory, "poisonmonitor", ConnectionStringStorage, 4);
-
-            var processor = new FixedBatchProcessorClient<BatchProcessor>(logger, metricFactory, ConnectionStringPartition, "$default", processorOptions, leaseManager, checkpointManager, (logger, metricFactory, partitionContext) =>
-            {
-                var checkpointPolicy = new PeriodicCheckpointPolicy(1000, TimeSpan.FromSeconds(15));
-
-                return new BatchProcessor(checkpointPolicy, poisonMessageMonitor);
-            });
-
-            await leaseManager.InitializeAsync((FixedProcessorClient)processor, processorOptions, CancellationToken.None).ConfigureAwait(false);
-            await checkpointManager.InitializeAsync(processor, processorOptions, CancellationToken.None).ConfigureAwait(false);
-            await poisonMessageMonitor.InitializeAsync(processor, processorOptions, logger, metricFactory, CancellationToken.None).ConfigureAwait(false);
-            await poisonMessageMonitor.CreateStoreIfNotExistsAsync(processor, processorOptions, CancellationToken.None).ConfigureAwait(false);
-
-            await processor.InitializeAsync(CancellationToken.None).ConfigureAwait(false);
-            await processor.StartProcessingAsync(CancellationToken.None).ConfigureAwait(false);
-
-            _watch = Stopwatch.StartNew();
-
-            while (_continueProcessing)
-            {
-                await Task.Delay(500).ConfigureAwait(false);
-            }
-
-            await processor.StopProcessingAsync(CancellationToken.None).ConfigureAwait(false);
-            _watch.Stop();
         }
 
         private static ILoggerFactory GetLoggerFactory()
