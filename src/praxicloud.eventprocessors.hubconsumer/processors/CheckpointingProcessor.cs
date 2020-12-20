@@ -229,7 +229,9 @@ namespace praxicloud.eventprocessors.hubconsumer.processors
                     try
                     {
                         Logger.LogInformation("Graceful shutdown on partition {partitionId}, forcing checkpoint to sequence number {sequenceNumber}", partitionContext.PartitionId, _checkpointTo.SequenceNumber);
-                        var checkpointSuccess = await _checkpointPolicy.CheckpointAsync(_checkpointTo, true, cancellationToken).ConfigureAwait(false);
+
+                        var tokenSource = new CancellationTokenSource(3000);
+                        var checkpointSuccess = await _checkpointPolicy.CheckpointAsync(_checkpointTo, true, tokenSource.Token).ConfigureAwait(false);
                         Logger.LogInformation("Completed checkpoint on partition {partitionId} result {result}", partitionContext.PartitionId, checkpointSuccess);
                     }
                     catch (Exception e)
@@ -238,7 +240,8 @@ namespace praxicloud.eventprocessors.hubconsumer.processors
                     }
                 }
 
-                await ProcessorStoppingAsync(reason, cancellationToken).ConfigureAwait(false);
+                var derivedTokenSource = new CancellationTokenSource(3000);
+                await ProcessorStoppingAsync(reason, derivedTokenSource.Token).ConfigureAwait(false);
             }
         }
 
