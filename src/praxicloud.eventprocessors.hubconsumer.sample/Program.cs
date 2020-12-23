@@ -11,11 +11,14 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     using Microsoft.Extensions.Logging;
     using praxicloud.core.metrics;
     using praxicloud.core.metrics.prometheus;
+    using praxicloud.eventprocessors.hubconsumer.concurrency;
     using praxicloud.eventprocessors.hubconsumer.leasing;
+    using praxicloud.eventprocessors.hubconsumer.partitioners;
     using praxicloud.eventprocessors.hubconsumer.policies;
     using praxicloud.eventprocessors.hubconsumer.storage;
     using System;
     using System.Collections.Concurrent;
+    using System.ComponentModel;
     using System.Diagnostics;
     using System.Threading;
     using System.Threading.Tasks;
@@ -93,9 +96,13 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
 
             var poisonMessageMonitor = new BlobStorageCountPoisonedMessageMonitor(logger, metricFactory, "poisonmonitor", ConnectionStringStorage, 4);
 
+            var partitioner = new DefaultEventHubPartitioner();
+
             var processor = new FixedBatchProcessorClient<DemoProcessor>(logger, metricFactory, ConnectionStringPartition, "$default", processorOptions, leaseManager, checkpointManager, (logger, metricFactory, partitionContext) =>
             {
-                return new DemoProcessor(1000, TimeSpan.FromSeconds(15));
+                var concurrencyManager = new SingleConcurrencyManager(true);
+
+                return new DemoProcessor(partitioner, concurrencyManager, 1000, TimeSpan.FromSeconds(15));
             });
 
             await leaseManager.InitializeAsync((FixedProcessorClient)processor, processorOptions, CancellationToken.None).ConfigureAwait(false);

@@ -11,6 +11,7 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     using System.Threading.Tasks;
     using Azure.Messaging.EventHubs;
     using Azure.Messaging.EventHubs.Processor;
+    using Microsoft.Extensions.Logging;
     using praxicloud.eventprocessors.hubconsumer.processors;
     #endregion
 
@@ -19,6 +20,9 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     /// </summary>
     public sealed class DemoProcessor : CheckpointingProcessor
     {
+        private readonly IExecutionPartitioner _partitioner;
+        private readonly IConcurrencyManager _concurrencyManager;
+
         #region Constructors
         /// <summary>
         /// Initializes a new instance of the type
@@ -26,8 +30,10 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         /// <param name="messageInterval">The number of messages to process between checkpoint operations</param>
         /// <param name="timeInterval">The time to wait between checkpointing</param>
         /// <param name="poisonMonitor">If a poison message monitor is not provided to test for bad messages at startup the NoopPoisonMonitor instance will be used</param>
-        public DemoProcessor(int messageInterval, TimeSpan timeInterval, IPoisonedMonitor poisonMonitor = null) : base(messageInterval, timeInterval, poisonMonitor)
+        public DemoProcessor(IExecutionPartitioner partitioner, IConcurrencyManager concurrencyManager, int messageInterval, TimeSpan timeInterval, IPoisonedMonitor poisonMonitor = null) : base(messageInterval, timeInterval, poisonMonitor)
         {
+            _partitioner = partitioner;
+            _concurrencyManager = concurrencyManager;
         }
 
         /// <summary>
@@ -36,13 +42,15 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
         /// <param name="messageInterval">The number of messages to process between checkpoint operations</param>
         /// <param name="timeInterval">The time to wait between checkpointing</param>
         /// <param name="poisonMonitor">If a poison message monitor is not provided to test for bad messages at startup the NoopPoisonMonitor instance will be used</param>
-        public DemoProcessor(ICheckpointPolicy checkpointPolicy, IPoisonedMonitor poisonMonitor = null) : base(checkpointPolicy, poisonMonitor)
+        public DemoProcessor(IExecutionPartitioner partitioner, IConcurrencyManager concurrencyManager,  ICheckpointPolicy checkpointPolicy, IPoisonedMonitor poisonMonitor = null) : base(checkpointPolicy, poisonMonitor)
         {
+            _partitioner = partitioner;
+            _concurrencyManager = concurrencyManager;
         }
         #endregion
 
         /// <inheritdoc />
-        protected override Task ProcessBatchAsync(IEnumerable<EventData> events, CancellationToken cancellationToken)
+        protected override async Task ProcessBatchAsync(IEnumerable<EventData> events, CancellationToken cancellationToken)
         {
             var messageCounter = 0;
             EventData lastData = null;
@@ -50,17 +58,44 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
             foreach (var data in events)
             {
                 messageCounter++;
+                
+                while(!await _concurrencyManager.ScheduleAsync(data, Task.FromResult(data), TimeSpan.FromMilliseconds(1000), cancellationToken))
+                {
+                    await Task.Delay(1).ConfigureAwait(false);
+                }
+
                 lastData = data;
             }
 
             if(lastData != null)
             {
+                try
+                {
+
+                    var completedTasks = await _concurrencyManager.WhenAllAsync(TimeSpan.FromSeconds(90), cancellationToken).ConfigureAwait(false);
+
+                    foreach(var item in completedTasks)
+                    {
+                        if(item.IsCompletedSuccessfully)
+                        {
+                            var abc = item.Result;
+                        }
+                        else
+                        {
+                            var abc = item.Result;
+
+                        }
+                    }
+                }
+                catch(Exception e)
+                {
+                    Logger.LogError(e, "Error processing task");
+                }                
+
                 SetCheckpointTo(lastData);
             }
 
             IncrementMessageCount(messageCounter);
-
-            return Task.CompletedTask;
         }
 
         /// <inheritdoc />

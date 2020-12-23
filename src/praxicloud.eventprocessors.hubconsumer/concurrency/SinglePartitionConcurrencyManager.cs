@@ -7,6 +7,7 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
     using System;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.Runtime.ConstrainedExecution;
     using System.Threading;
     using System.Threading.Tasks;
     using Azure.Messaging.EventHubs;
@@ -172,18 +173,20 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
                     try
                     {
                         _ = await Task.WhenAll(_trackedTasks.Values).ConfigureAwait(false);
+
+                        results = new List<Task<EventData>>(_completedTasks.Count);
+
+                        while (_completedTasks.TryDequeue(out var completed))
+                        {
+                            results.Add(completed);
+                        }
+
                     }
                     finally
                     {
                         _readControl.Release();
                     }
 
-                    results = new List<Task<EventData>>(_completedTasks.Count);
-
-                    while (_completedTasks.TryDequeue(out var completed))
-                    {
-                        results.Add(completed);
-                    }
                 }
             }
             else
@@ -203,18 +206,25 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
             {
                 if (await _readControl.WaitAsync(timeout, cancellationToken).ConfigureAwait(false))
                 {
-                    if (!_completedTasks.TryDequeue(out var completed))
+                    try
                     {
-                        _ = await Task.WhenAny(_trackedTasks.Values).ConfigureAwait(false);
+                        if (!_completedTasks.TryDequeue(out var completed))
+                        {
+                            _ = await Task.WhenAny(_trackedTasks.Values).ConfigureAwait(false);
 
-                        if (_completedTasks.TryDequeue(out completed))
+                            if (_completedTasks.TryDequeue(out completed))
+                            {
+                                results = completed;
+                            }
+                        }
+                        else
                         {
                             results = completed;
                         }
                     }
-                    else
+                    finally
                     {
-                        results = completed;
+                        _readControl.Release();
                     }
                 }
             }

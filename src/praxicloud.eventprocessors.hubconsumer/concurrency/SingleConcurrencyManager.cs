@@ -77,11 +77,11 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
         {
             var scheduled = false;
 
-            if (Count > 0)
+            if (Count < 1)
             {
                 if(await _scheduleControl.WaitAsync(timeout, cancellationToken).ConfigureAwait(false))
                 {
-                    if(Count > 0)
+                    if(Count < 1)
                     {
                         _trackedTask = task.ContinueWith(t =>
                         {
@@ -112,18 +112,21 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
                 {
                     try
                     {
-                        _ = await Task.WhenAll(_trackedTask).ConfigureAwait(false);
+                        if (_trackedTask != null)
+                        {
+                            _ = await Task.WhenAll(_trackedTask).ConfigureAwait(false);
+                        }
+
+                        results = new List<Task<EventData>>(_completedTasks.Count);
+
+                        while (_completedTasks.TryDequeue(out var completed))
+                        {
+                            results.Add(completed);
+                        }
                     }
                     finally
                     {
                         _readControl.Release();
-                    }
-
-                    results = new List<Task<EventData>>(_completedTasks.Count);
-
-                    while (_completedTasks.TryDequeue(out var completed))
-                    {
-                        results.Add(completed);
                     }
                 }
             }
@@ -144,18 +147,28 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
             {
                 if (await _readControl.WaitAsync(timeout, cancellationToken).ConfigureAwait(false))
                 {
-                    if (!_completedTasks.TryDequeue(out var completed))
+                    try
                     {
-                        _ = await Task.WhenAny(_trackedTask).ConfigureAwait(false);
+                        if (!_completedTasks.TryDequeue(out var completed))
+                        {
+                            if (_trackedTask != null)
+                            {
+                                _ = await Task.WhenAny(_trackedTask).ConfigureAwait(false);
+                            }
 
-                        if (_completedTasks.TryDequeue(out completed))
+                            if (_completedTasks.TryDequeue(out completed))
+                            {
+                                results = completed;
+                            }
+                        }
+                        else
                         {
                             results = completed;
                         }
                     }
-                    else
+                    finally
                     {
-                        results = completed;
+                        _readControl.Release();
                     }
                 }
             }
