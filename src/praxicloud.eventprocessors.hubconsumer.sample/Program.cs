@@ -15,6 +15,7 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     using praxicloud.eventprocessors.hubconsumer.policies;
     using praxicloud.eventprocessors.hubconsumer.storage;
     using System;
+    using System.Collections.Concurrent;
     using System.Diagnostics;
     using System.Threading;
     using System.Threading.Tasks;
