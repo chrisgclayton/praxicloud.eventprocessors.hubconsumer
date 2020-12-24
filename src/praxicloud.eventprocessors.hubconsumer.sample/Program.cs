@@ -100,9 +100,10 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
 
             var processor = new FixedBatchProcessorClient<DemoProcessor>(logger, metricFactory, ConnectionStringPartition, "$default", processorOptions, leaseManager, checkpointManager, (logger, metricFactory, partitionContext) =>
             {
-                var concurrencyManager = new SingleConcurrencyManager(true);
+                //   var concurrencyPolicy = new SingleConcurrencyPolicy();
+                var concurrencyPolicy = new MaximumConcurrencyPolicy(20);
 
-                return new DemoProcessor(partitioner, concurrencyManager, 1000, TimeSpan.FromSeconds(15));
+                return new DemoProcessor(concurrencyPolicy, 1000, TimeSpan.FromSeconds(15));
             });
 
             await leaseManager.InitializeAsync((FixedProcessorClient)processor, processorOptions, CancellationToken.None).ConfigureAwait(false);

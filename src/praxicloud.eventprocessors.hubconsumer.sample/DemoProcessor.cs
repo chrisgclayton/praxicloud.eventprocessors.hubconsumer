@@ -5,7 +5,9 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
 {
     #region Using Clauses
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.Data;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -20,78 +22,80 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     /// </summary>
     public sealed class DemoProcessor : CheckpointingProcessor
     {
-        private readonly IExecutionPartitioner _partitioner;
-        private readonly IConcurrencyManager _concurrencyManager;
+        private readonly IConcurrencyPolicy _concurrencyPolicy;
 
         #region Constructors
         /// <summary>
         /// Initializes a new instance of the type
         /// </summary>
+        /// <param name="concurrencyPolicy">The concurrency policy the processor uses</param>
         /// <param name="messageInterval">The number of messages to process between checkpoint operations</param>
         /// <param name="timeInterval">The time to wait between checkpointing</param>
         /// <param name="poisonMonitor">If a poison message monitor is not provided to test for bad messages at startup the NoopPoisonMonitor instance will be used</param>
-        public DemoProcessor(IExecutionPartitioner partitioner, IConcurrencyManager concurrencyManager, int messageInterval, TimeSpan timeInterval, IPoisonedMonitor poisonMonitor = null) : base(messageInterval, timeInterval, poisonMonitor)
+        public DemoProcessor(IConcurrencyPolicy concurrencyPolicy, int messageInterval, TimeSpan timeInterval, IPoisonedMonitor poisonMonitor = null) : base(messageInterval, timeInterval, poisonMonitor)
         {
-            _partitioner = partitioner;
-            _concurrencyManager = concurrencyManager;
+            _concurrencyPolicy = concurrencyPolicy;
         }
 
         /// <summary>
         /// Initializes a new instance of the type
         /// </summary>
-        /// <param name="messageInterval">The number of messages to process between checkpoint operations</param>
-        /// <param name="timeInterval">The time to wait between checkpointing</param>
+        /// <param name="concurrencyPolicy">The concurrency policy the processor uses</param>
         /// <param name="poisonMonitor">If a poison message monitor is not provided to test for bad messages at startup the NoopPoisonMonitor instance will be used</param>
-        public DemoProcessor(IExecutionPartitioner partitioner, IConcurrencyManager concurrencyManager,  ICheckpointPolicy checkpointPolicy, IPoisonedMonitor poisonMonitor = null) : base(checkpointPolicy, poisonMonitor)
+        public DemoProcessor(IConcurrencyPolicy concurrencyPolicy,  ICheckpointPolicy checkpointPolicy, IPoisonedMonitor poisonMonitor = null) : base(checkpointPolicy, poisonMonitor)
         {
-            _partitioner = partitioner;
-            _concurrencyManager = concurrencyManager;
+            _concurrencyPolicy = concurrencyPolicy;
         }
         #endregion
+
+        private async Task<EventData> ProcessData(EventData data, object state, CancellationToken cancellationToken)
+        {
+            await Task.Delay(10).ConfigureAwait(false);
+
+            return data;
+        }
 
         /// <inheritdoc />
         protected override async Task ProcessBatchAsync(IEnumerable<EventData> events, CancellationToken cancellationToken)
         {
             var messageCounter = 0;
             EventData lastData = null;
+            Dictionary<EventData, Task<EventData>> batchTasks = new Dictionary<EventData, Task<EventData>>(100);
 
             foreach (var data in events)
             {
-                messageCounter++;
-                
-                while(!await _concurrencyManager.ScheduleAsync(data, Task.FromResult(data), TimeSpan.FromMilliseconds(1000), cancellationToken))
-                {
-                    await Task.Delay(1).ConfigureAwait(false);
-                }
+                var executingTask = await _concurrencyPolicy.RunAsync(data, ProcessData, data.SequenceNumber, cancellationToken).ConfigureAwait(false);
 
-                lastData = data;
+                if (executingTask != null)
+                {
+                    messageCounter++;
+                    batchTasks.Add(data, executingTask);
+                }
+                else
+                {
+                    await Task.Delay(5).ConfigureAwait(false);
+                }                
             }
 
-            if(lastData != null)
+            foreach(var pair in batchTasks)
             {
                 try
                 {
-
-                    var completedTasks = await _concurrencyManager.WhenAllAsync(TimeSpan.FromSeconds(90), cancellationToken).ConfigureAwait(false);
-
-                    foreach(var item in completedTasks)
+                    var data = await pair.Value.ConfigureAwait(false);
+                        
+                    if(data.SequenceNumber > ((lastData?.SequenceNumber) ?? -1))
                     {
-                        if(item.IsCompletedSuccessfully)
-                        {
-                            var abc = item.Result;
-                        }
-                        else
-                        {
-                            var abc = item.Result;
-
-                        }
+                        lastData = data;
                     }
                 }
                 catch(Exception e)
                 {
-                    Logger.LogError(e, "Error processing task");
-                }                
+                    Logger.LogError(e, "Error processing sequence number {sequenceNumber} on partition {partitionId}", pair.Key.SequenceNumber, Context.PartitionId);
+                }
+            }
 
+            if (lastData != null)
+            {
                 SetCheckpointTo(lastData);
             }
 
