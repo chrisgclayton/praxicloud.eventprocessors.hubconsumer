@@ -101,7 +101,8 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
             var processor = new FixedBatchProcessorClient<DemoProcessor>(logger, metricFactory, ConnectionStringPartition, "$default", processorOptions, leaseManager, checkpointManager, (logger, metricFactory, partitionContext) =>
             {
                 //   var concurrencyPolicy = new SingleConcurrencyPolicy();
-                var concurrencyPolicy = new MaximumConcurrencyPolicy(20);
+                // var concurrencyPolicy = new MaximumConcurrencyPolicy(20);
+                var concurrencyPolicy = new PartitionedMaximumConcurrencyPolicy(20, partitioner);
 
                 return new DemoProcessor(concurrencyPolicy, 1000, TimeSpan.FromSeconds(15));
             });

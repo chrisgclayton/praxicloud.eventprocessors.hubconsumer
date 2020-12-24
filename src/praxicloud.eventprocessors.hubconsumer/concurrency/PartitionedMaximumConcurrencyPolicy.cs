@@ -5,6 +5,9 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
 {
     #region Using Clauses
     using System;
+    using System.Collections.Concurrent;
+    using System.Collections.Generic;
+    using System.Runtime.CompilerServices;
     using System.Threading;
     using System.Threading.Tasks;
     using Azure.Messaging.EventHubs;
@@ -14,7 +17,7 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
     /// <summary>
     /// Manages concurrency to allow a maximum number of concurrently executing tasks
     /// </summary>
-    public sealed class MaximumConcurrencyPolicy : IConcurrencyPolicy, IDisposable
+    public class PartitionedMaximumConcurrencyPolicy : IConcurrencyPolicy, IDisposable
     {
         #region Variables
         /// <summary>
@@ -28,6 +31,16 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
         private long _executingTaskCount = 0;
 
         /// <summary>
+        /// The partitioner to determine the partition to assign the message to
+        /// </summary>
+        private readonly IExecutionPartitioner _partitioner;
+
+        /// <summary>
+        /// The partitions currently executing on
+        /// </summary>
+        private readonly ConcurrentDictionary<string, object> _partitionTracker = new ConcurrentDictionary<string, object>();
+
+        /// <summary>
         /// The number of times the instance has been disposed of
         /// </summary>
         private int _disposalCount;
@@ -37,17 +50,20 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
         /// Initializes a new instance of the type
         /// </summary>
         /// <param name="maximumDegreeOfParallelism">The maximum degree of parallelism allowd</param>
-        public MaximumConcurrencyPolicy(short maximumDegreeOfParallelism)
+        /// <param name="partitioner">A partitioning utility for messages</param>
+        public PartitionedMaximumConcurrencyPolicy(short maximumDegreeOfParallelism, IExecutionPartitioner partitioner)
         {
             Guard.NotLessThan(nameof(maximumDegreeOfParallelism), maximumDegreeOfParallelism, 1);
+            Guard.NotNull(nameof(partitioner), partitioner);
 
             Capacity = maximumDegreeOfParallelism;
+            _partitioner = partitioner;
         }
 
         /// <summary>
         /// Finalizer
         /// </summary>
-        ~MaximumConcurrencyPolicy()
+        ~PartitionedMaximumConcurrencyPolicy()
         {
             Dispose(false);
         }
@@ -55,7 +71,6 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
         #region Properties
         /// <inheritdoc />
         public int Count => (int)Interlocked.Read(ref _executingTaskCount);
-        
 
         /// <inheritdoc />
         public int Capacity { get; }
@@ -70,11 +85,21 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
 
             try
             {
-                if(Interlocked.Read(ref _executingTaskCount) <= Capacity)
+                if (Interlocked.Read(ref _executingTaskCount) <= Capacity)
                 {
-                    Interlocked.Increment(ref _executingTaskCount);
-                    executionTask = processor(data, state, cancellationToken);
-                    _ = executionTask.ContinueWith(t => Interlocked.Decrement(ref _executingTaskCount));
+                    var partition = _partitioner.GetPartition(data);
+                    if (!_partitioner.IsCaseSensitive) partition = partition.ToLowerInvariant();
+
+                    if(_partitionTracker.TryAdd(partition, partition))
+                    {
+                        Interlocked.Increment(ref _executingTaskCount);
+                        executionTask = processor(data, state, cancellationToken);
+                        _ = executionTask.ContinueWith(t =>
+                        {
+                            _partitionTracker.TryRemove(partition, out _);
+                            Interlocked.Decrement(ref _executingTaskCount);
+                        });
+                    }
                 }
             }
             finally
