@@ -6,8 +6,6 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
     #region Using Clauses
     using System;
     using System.Collections.Concurrent;
-    using System.Collections.Generic;
-    using System.Runtime.CompilerServices;
     using System.Threading;
     using System.Threading.Tasks;
     using Azure.Messaging.EventHubs;
@@ -15,7 +13,7 @@ namespace praxicloud.eventprocessors.hubconsumer.concurrency
     #endregion
 
     /// <summary>
-    /// Manages concurrency to allow a maximum number of concurrently executing tasks
+    /// Manages concurrency to allow a maximum number of concurrently executing tasks, not allowing 2 of the same partition execute at the same time.
     /// </summary>
     public class PartitionedMaximumConcurrencyPolicy : IConcurrencyPolicy, IDisposable
     {
