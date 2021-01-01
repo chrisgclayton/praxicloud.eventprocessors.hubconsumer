@@ -1,4 +1,4 @@
-name: PraxiCloud Core Metrics Build Pipeline
+name: PraxiCloud Core Hub Consumer Build Pipeline
 
 on:
   push:
