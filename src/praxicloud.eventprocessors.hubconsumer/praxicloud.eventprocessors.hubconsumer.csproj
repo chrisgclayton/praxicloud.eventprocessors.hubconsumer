@@ -2,7 +2,7 @@
 
   <Import Project="..\common.props" />
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net5.0</TargetFramework>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>PraxiCloud-EventProcessors-HubConsumer</PackageId>
     <Description>PraxiCloud libraries offer a range of common functions, features and base classes to use when building solutions, increasing the time to delivery. The Hub Consumer library offers specialized features and functions to support consuming from Event Hub endpoints.</Description>
@@ -13,8 +13,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Azure.Messaging.EventHubs" Version="5.2.0" />
-    <PackageReference Include="PraxiCloud-Core-Metrics" Version="2.3.0" />
-    <PackageReference Include="PraxiCloud-EventProcessors" Version="1.2.0" />
+    <PackageReference Include="PraxiCloud-Core-Metrics" Version="5.0.0" />
+    <PackageReference Include="PraxiCloud-EventProcessors" Version="5.0.0" />
   </ItemGroup>
 </Project>
 
