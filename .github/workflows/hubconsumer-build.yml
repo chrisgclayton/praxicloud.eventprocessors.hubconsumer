@@ -27,7 +27,11 @@ jobs:
       run: dotnet restore ./src/praxicloud.eventprocessors.hubconsumer.solution.sln
     - name: Build Library and Test Projects
       run: dotnet build --configuration Release --no-restore ./src/praxicloud.eventprocessors.hubconsumer.solution.sln
-    - name: Package library
+    - name: Package Hub Consumer library
       run: dotnet pack --configuration Release ./src/praxicloud.eventprocessors.hubconsumer/praxicloud.eventprocessors.hubconsumer.csproj
-    - name: Push library package to GitHub NUGET Feed
+    - name: Package Hub Consumer Storage library
+      run: dotnet pack --configuration Release ./src/praxicloud.eventprocessors.hubconsumer.storage/praxicloud.eventprocessors.hubconsumer.storage.csproj
+    - name: Push Hub Consumer library package to GitHub NUGET Feed
       run: nuget push ./src/praxicloud.eventprocessors.hubconsumer/bin/Release/*.nupkg -SkipDuplicate -ApiKey ${{secrets.GITHUB_TOKEN}}   
+    - name: Push Hub Consumer Storage library package to GitHub NUGET Feed
+      run: nuget push ./src/praxicloud.eventprocessors.hubconsumer.storage/bin/Release/*.nupkg -SkipDuplicate -ApiKey ${{secrets.GITHUB_TOKEN}}

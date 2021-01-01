@@ -9,6 +9,7 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
     using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Logging.Console;
     using praxicloud.core.metrics;
     using praxicloud.core.metrics.prometheus;
     using praxicloud.eventprocessors.hubconsumer.concurrency;
@@ -163,10 +164,10 @@ namespace praxicloud.eventprocessors.hubconsumer.sample
 
             builder.AddLogging(configuration =>
             {
-                configuration.AddConsole(options =>
+                configuration.AddSimpleConsole(consoleConfig =>
                 {
-                    options.DisableColors = false;
-                    options.IncludeScopes = false;
+                    consoleConfig.ColorBehavior = LoggerColorBehavior.Disabled;
+                    consoleConfig.IncludeScopes = false;
                 });
 
                 configuration.SetMinimumLevel(LogLevel.Debug);
