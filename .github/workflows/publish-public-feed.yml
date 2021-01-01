@@ -1,0 +1,35 @@
+name: Publish to Public NUGET (Nuget.Org)
+
+on:
+  workflow_dispatch:
+    inputs:
+      library-version:
+        description: 'Enter the library NUGET package version (e.g. 1.1.1)'
+        required: true
+        default: '1.1.1'  
+
+jobs:
+  build-library:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1.301
+        source-url: ${{secrets.REPO_NUGET_SOURCE}}
+      env:
+        NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        NUGET_SOURCE: ${{secrets.REPO_NUGET_SOURCE}}
+        NUGET_USER: ${{secrets.REPO_USER_NAME}}
+    - name: Update Packaging Version
+      run: sed -i "s/<Version>1.0.1<\/Version>/<Version>${{ github.event.inputs.library-version }}<\/Version>/g" ./src/common.props      
+    - name: Install Nuget Dependencies
+      run: dotnet restore ./src/praxicloud.eventprocessors.hubconsumer.solution.sln
+    - name: Build Library and Test Projects
+      run: dotnet build --configuration Release --no-restore ./src/praxicloud.eventprocessors.hubconsumer.solution.sln
+    - name: Package library
+      run: dotnet pack --configuration Release ./src/praxicloud.eventprocessors.hubconsumer/praxicloud.eventprocessors.hubconsumer.csproj
+    - name: Push library package to public NUGET Feed
+      run: nuget push ./src/praxicloud.eventprocessors.hubconsumer/bin/Release/*.nupkg -SkipDuplicate -ApiKey ${{secrets.NUGET_ORG_API_KEY}} -Source https://api.nuget.org/v3/index.json  
