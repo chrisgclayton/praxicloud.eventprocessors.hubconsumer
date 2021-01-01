@@ -29,7 +29,12 @@ jobs:
       run: dotnet restore ./src/praxicloud.eventprocessors.hubconsumer.solution.sln
     - name: Build Library and Test Projects
       run: dotnet build --configuration Release --no-restore ./src/praxicloud.eventprocessors.hubconsumer.solution.sln
-    - name: Package library
+    - name: Package Hub Consumer library
       run: dotnet pack --configuration Release ./src/praxicloud.eventprocessors.hubconsumer/praxicloud.eventprocessors.hubconsumer.csproj
-    - name: Push library package to public NUGET Feed
+    - name: Package Hub Consumer Storage library
+      run: dotnet pack --configuration Release ./src/praxicloud.eventprocessors.hubconsumer.storage/praxicloud.eventprocessors.hubconsumer.storage.csproj
+    - name: Push Hub Consumer library package to Public NUGET Feed
       run: nuget push ./src/praxicloud.eventprocessors.hubconsumer/bin/Release/*.nupkg -SkipDuplicate -ApiKey ${{secrets.NUGET_ORG_API_KEY}} -Source https://api.nuget.org/v3/index.json  
+    - name: Push Hub Consumer Storage library package to Public NUGET Feed
+      run: nuget push ./src/praxicloud.eventprocessors.hubconsumer.storage/bin/Release/*.nupkg -SkipDuplicate -ApiKey ${{secrets.NUGET_ORG_API_KEY}} -Source https://api.nuget.org/v3/index.json  
+
