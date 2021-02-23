@@ -168,8 +168,10 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
         }
 
         /// <inheritdoc />
-        public virtual Task<bool> InitializeAsync(FixedProcessorClient client, FixedProcessorClientOptions options, CancellationToken cancellationToken)
+        public virtual async Task<bool> InitializeAsync(FixedProcessorClient client, FixedProcessorClientOptions options, CancellationToken cancellationToken)
         {
+            var success = false;
+
             using (Logger.BeginScope("Initialize checkpoint store"))
             {
                 Logger.LogDebug("Initializing checkpoint store");
@@ -179,9 +181,11 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
                 Logger.LogInformation("Store prefix {location}", _checkpointPrefix);
                 _blobNameFormatString = string.Concat(_checkpointPrefix, "/{0}");
                 _processorClient = client;
+
+                success = await CreateStoreIfNotExistsAsync(options, cancellationToken).ConfigureAwait(false);
             }
 
-            return Task.FromResult(true);
+            return success;
         }
 
         /// <summary>

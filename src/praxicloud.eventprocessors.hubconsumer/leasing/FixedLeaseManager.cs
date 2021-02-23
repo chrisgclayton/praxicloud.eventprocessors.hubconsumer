@@ -32,6 +32,9 @@ namespace praxicloud.eventprocessors.hubconsumer.leasing
         /// </summary>
         private const string NotOwned = "NotOwned";
         #endregion
+        #region Variables
+        private static readonly DateTimeOffset _maximumDateTime = DateTimeOffset.MaxValue.AddYears(-1);
+        #endregion
         #region Proeprties
         /// <summary>
         /// Controls access to the underlying lease collection
@@ -280,7 +283,7 @@ namespace praxicloud.eventprocessors.hubconsumer.leasing
                 else
                 {
                     ownership.OwnerIdentifier = NotOwned;
-                    ownership.LastModifiedTime = DateTime.MaxValue;
+                    ownership.LastModifiedTime = _maximumDateTime;
                 }
 
                 leases.Add(partition, ownership);

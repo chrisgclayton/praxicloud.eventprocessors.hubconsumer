@@ -247,8 +247,10 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
 
 
         /// <inheritdoc />
-        public Task<bool> InitializeAsync(FixedProcessorClient client, FixedProcessorClientOptions options, ILogger logger, IMetricFactory metricFactory, CancellationToken cancellationToken)
+        public async Task<bool> InitializeAsync(FixedProcessorClient client, FixedProcessorClientOptions options, ILogger logger, IMetricFactory metricFactory, CancellationToken cancellationToken)
         {
+            var success = false;
+
             using (Logger.BeginScope("Initialize poison message store"))
             {
                 Logger.LogDebug("Initializing poison message store");
@@ -257,9 +259,11 @@ namespace praxicloud.eventprocessors.hubconsumer.storage
                                                                           string.Format(CultureInfo.InvariantCulture, "{0}/{1}/{2}/{3}", options.CheckpointPrefix, client.FullyQualifiedNamespace.ToLowerInvariant(), client.EventHubName.ToLowerInvariant(), client.ConsumerGroup.Replace("$", "").ToLowerInvariant());
                 Logger.LogInformation("Store prefix {location}", _messageStorePrefix);
                 _blobNameFormatString = string.Concat(_messageStorePrefix, "/{0}");
+
+                success = await CreateStoreIfNotExistsAsync(client, options, cancellationToken).ConfigureAwait(false);
             }
 
-            return Task.FromResult(true);
+            return success;
         }
 
         /// <inheritdoc />
